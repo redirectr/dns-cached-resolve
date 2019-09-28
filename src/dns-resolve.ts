@@ -3,10 +3,12 @@ import LRU, { Options as LRUOptions, Cache } from 'lru-cache';
 import retry, { Options as RetryOptions } from 'async-retry';
 import resolve4 from './resolve4';
 import resolve6 from './resolve6';
+import resolveTxt from './resolveTxt';
 
 const lruOptions = { max: 500 };
 let cache4: Cache<string, string | Promise<string>>;
 let cache6: Cache<string, string | Promise<string>>;
+let cacheTxt: Cache<string, string | Promise<string>>;
 
 type Options = {
   ipv6?: boolean;
@@ -14,11 +16,18 @@ type Options = {
   refreshCache?: boolean;
   retryOpts?: RetryOptions;
   resolver?: typeof dns;
+  txt?: boolean;
 };
 
 setupCache();
 
 export default async function dnsResolve(host: string, options: Options = {}) {
+  return options.txt
+    ? dnsResolveTxt(host, options)
+    : dnsResolveNonTxt(host, options);
+}
+
+async function dnsResolveNonTxt(host: string, options: Options = {}) {
   const {
     ipv6 = false,
     minimumCacheTime = 300,
@@ -50,7 +59,33 @@ export default async function dnsResolve(host: string, options: Options = {}) {
   return p;
 }
 
+async function dnsResolveTxt(host: string, options: Options = {}) {
+  const {
+    refreshCache = false,
+    retryOpts = { minTimeout: 10, retries: 3, factor: 5 },
+    resolver = dns
+  } = options;
+
+  if (refreshCache) {
+    cacheTxt.del(host);
+  } else {
+    const records = cacheTxt.get(host);
+    if (records) return JSON.parse(await records);
+  }
+
+  const p = (async () => {
+    const res = await retry(() => resolveTxt(host, resolver), retryOpts);
+    const resString = JSON.stringify(res)
+    cacheTxt.set(host, resString, 300 * 1000);
+    return resString;
+  })();
+
+  cacheTxt.set(host, p, 5000);
+  return JSON.parse(await p);
+}
+
 export function setupCache() {
   cache4 = new LRU(lruOptions);
   cache6 = new LRU(lruOptions);
+  cacheTxt = new LRU(lruOptions);
 }
