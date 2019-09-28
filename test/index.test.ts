@@ -12,7 +12,7 @@ async function resolve(domain: string, options = {}) {
 
   const line = `resolve ${resnr++}`;
   console.time(line);
-  console.log('IP: ', await dnsResolve(domain, options));
+  console.log('IP/TXT: ', await dnsResolve(domain, options));
   console.timeEnd(line);
 }
 
@@ -50,3 +50,9 @@ test('Proper error on CNAME pointing to nowhere', async () => {
   const p = dnsResolve('dns-cached-resolve-test.zeit.rocks');
   await expect(p).rejects.toThrow('queryA ENOTFOUND dns-cached-resolve-test.zeit.rocks');
 }, 10000);
+
+test('should resolve txt records', async () => {
+  for (const domain of domains) {
+    await resolve(domain, { txt: true });
+  }
+}, 10000)
